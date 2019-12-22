@@ -2,10 +2,12 @@ package concache
 
 import(
   "time"
+  "runtime"
 )
 
 type Cache struct {
   shard              *MapShard
+  janitor            *Janitor
   defaultExpiration  time.Duration
   cleanupInterval    time.Duration
   evictedCb          EvictedCb
@@ -24,17 +26,21 @@ func New(funcs ...OptionsFunc) *Cache {
   c.cleanupInterval   = opts.CleanupInterval
   c.evictedCb         = opts.OnEvicted
   c.deletedCb         = opts.OnDeleted
+
+  if 0 < c.cleanupInterval {
+    janitor  := newJanitor(c.cleanupInterval)
+    c.janitor = janitor
+    janitor.Run(c)
+    runtime.SetFinalizer(c, stopJanitor)
+  }
   return c
 }
-func (c *Cache) ttl(dur time.Duration) int64 {
-  ttl := int64(0)
-  if 0 < dur {
-    ttl = time.Now().Add(dur).UnixNano()
-  }
-  return ttl
+func stopJanitor(c *Cache) {
+  c.janitor.Stop()
 }
+
 func (c *Cache) Set(key string, value interface{}, dur time.Duration) {
-  ttl   := c.ttl(dur)
+  ttl   := createTTL(dur)
   shard := c.shard.GetShard(key)
   shard.Lock()
   shard.items[key] = CacheItem{ Value: value, Expiration: ttl }
@@ -46,10 +52,11 @@ func (c *Cache) SetDefault(key string, value interface{}) {
 func (c *Cache) SetNoExpire(key string, value interface{}) {
   c.Set(key, value, 0)
 }
+
 type UpsertCb func(exist bool, oldValue interface{}) (newValue interface{})
 func (c *Cache) Upsert(key string, dur time.Duration, cb UpsertCb) {
   var newValue interface{}
-  ttl   := c.ttl(dur)
+  ttl   := createTTL(dur)
   shard := c.shard.GetShard(key)
   shard.Lock()
   item, ok := shard.items[key]
@@ -71,6 +78,7 @@ func (c *Cache) UpsertDefault(key string, cb UpsertCb) {
 func (c *Cache) UpsertNoExpire(key string, cb UpsertCb) {
   c.Upsert(key, 0, cb)
 }
+
 func (c *Cache) Get(key string) (interface{}, bool) {
   shard := c.shard.GetShard(key)
   shard.RLock()
@@ -86,6 +94,7 @@ func (c *Cache) Get(key string) (interface{}, bool) {
   shard.RUnlock()
   return item.Value, true
 }
+
 func (c *Cache) Delete(key string) (interface{}, bool) {
   shard := c.shard.GetShard(key)
   shard.Lock()
@@ -99,6 +108,7 @@ func (c *Cache) Delete(key string) (interface{}, bool) {
   shard.Unlock()
   return item.Value, true
 }
+
 func (c *Cache) Count() int {
   count := 0
   for _, shard := range c.shard.GetShards() {
@@ -108,6 +118,7 @@ func (c *Cache) Count() int {
   }
   return count
 }
+
 type kv struct {
   key   string
   value interface{}
@@ -120,10 +131,11 @@ func (c *Cache) DeleteExpired() {
     collectEvicted = true
     evictedItems   = make([]kv, 0)
   }
+
   for _, shard := range c.shard.GetShards() {
     shard.Lock()
     for key, item := range shard.items {
-      if item.ExpiredFrom(now) {
+      if item.ExpiredFrom(now) != true {
         delete(shard.items, key)
         if collectEvicted {
           evictedItems = append(evictedItems, kv{key, item.Value})
@@ -145,4 +157,12 @@ func (c *Cache) onExpired(key string, value interface{}) {
   if c.evictedCb != nil {
     c.evictedCb(key, value)
   }
+}
+
+func createTTL(dur time.Duration) int64 {
+  ttl := int64(0)
+  if 0 < dur {
+    ttl = time.Now().Add(dur).UnixNano()
+  }
+  return ttl
 }

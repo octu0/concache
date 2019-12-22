@@ -64,8 +64,7 @@ func fnv32(key string) uint32 {
   h := offset32
   l := len(key)
   for i := 0; i < l; i += 1 {
-    h *= prime32
-    h ^= uint32(key[i])
+    h = (h ^ uint32(key[i])) * prime32
   }
   return h
 }
