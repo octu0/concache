@@ -5,6 +5,34 @@ import(
   "runtime"
 )
 
+type UpsertCb func(exist bool, oldValue interface{}) (newValue interface{})
+
+type CacheGetSetDelete interface {
+  Set(key string, value interface{}, dur time.Duration)
+  SetDefault(key string, value interface{})
+  SetNoExpire(key string, value interface{})
+  Get(key string) (value interface{}, exist bool)
+  Delete(key string) (value interface{}, exist bool)
+}
+type CacheGetSetUpsertDelete interface {
+  CacheGetSetDelete
+  Upsert(key string, dur time.Duration, cb UpsertCb)
+}
+type CacheItemCount interface {
+  Count() int
+}
+type CacheItemDeleteExpire interface {
+  DeleteExpired()
+}
+
+// compile check
+var (
+  _ CacheGetSetDelete       = (*Cache)(nil)
+  _ CacheGetSetUpsertDelete = (*Cache)(nil)
+  _ CacheItemCount          = (*Cache)(nil)
+  _ CacheItemDeleteExpire   = (*Cache)(nil)
+)
+
 type Cache struct {
   shard              *MapShard
   janitor            *Janitor
@@ -53,7 +81,6 @@ func (c *Cache) SetNoExpire(key string, value interface{}) {
   c.Set(key, value, 0)
 }
 
-type UpsertCb func(exist bool, oldValue interface{}) (newValue interface{})
 func (c *Cache) Upsert(key string, dur time.Duration, cb UpsertCb) {
   var newValue interface{}
   ttl   := createTTL(dur)
