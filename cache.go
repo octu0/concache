@@ -47,6 +47,9 @@ func New(funcs ...OptionsFunc) *Cache {
   for _, fn := range funcs {
     fn(opts)
   }
+  if opts.ShardSize < 1 {
+    opts.ShardSize = DEFAULT_SHARD_COUNT
+  }
 
   c                  := new(Cache)
   c.shard             = newMapShard(opts.ShardSize)

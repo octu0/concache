@@ -30,18 +30,20 @@ func (item CacheItem) ExpiredFrom(fromNano int64) bool {
 
 type MapShard struct {
   size   uint
-  shards []*CacheMapShard
+  shards []*CacheMap
 }
 
-type CacheMapShard struct {
+type CacheMap struct {
+  id     uint
   items  map[string]CacheItem
   sync.RWMutex
 }
 
 func newMapShard(size uint) *MapShard {
-  shards := make([]*CacheMapShard, size)
+  shards := make([]*CacheMap, size)
   for i := 0; i < int(size); i += 1 {
-    m        := new(CacheMapShard)
+    m        := new(CacheMap)
+    m.id      = uint(i)
     m.items   = make(map[string]CacheItem)
     shards[i] = m
   }
@@ -52,19 +54,18 @@ func newMapShard(size uint) *MapShard {
   return ms
 }
 
-func (ms *MapShard) GetShard(key string) *CacheMapShard {
+func (ms *MapShard) GetShard(key string) *CacheMap {
   idx := uint(fnv32(key)) % ms.size
   return ms.shards[idx]
 }
-func (ms *MapShard) GetShards() []*CacheMapShard {
+func (ms *MapShard) GetShards() []*CacheMap {
   return ms.shards
 }
 
 func fnv32(key string) uint32 {
   h := offset32
-  l := len(key)
-  for i := 0; i < l; i += 1 {
-    h = (h ^ uint32(key[i])) * prime32
+  for _, k := range key {
+    h = (h ^ uint32(k)) * prime32
   }
   return h
 }
