@@ -5,8 +5,6 @@ import(
   "runtime"
 )
 
-type UpsertCb func(exist bool, oldValue interface{}) (newValue interface{})
-
 type CacheGetSetDelete interface {
   Set(key string, value interface{}, dur time.Duration)
   SetDefault(key string, value interface{})
@@ -14,6 +12,9 @@ type CacheGetSetDelete interface {
   Get(key string) (value interface{}, exist bool)
   Delete(key string) (value interface{}, exist bool)
 }
+
+type UpsertCb func(exist bool, oldValue interface{}) (newValue interface{})
+
 type CacheGetSetUpsertDelete interface {
   CacheGetSetDelete
   Upsert(key string, dur time.Duration, cb UpsertCb)
