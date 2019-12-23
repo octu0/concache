@@ -165,7 +165,7 @@ func (c *Cache) DeleteExpired() {
   for _, shard := range c.shard.GetShards() {
     shard.Lock()
     for key, item := range shard.items {
-      if item.ExpiredFrom(now) != true {
+      if item.ExpiredFrom(now) {
         delete(shard.items, key)
         if collectEvicted {
           evictedItems = append(evictedItems, kv{key, item.Value})

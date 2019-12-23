@@ -102,7 +102,7 @@ func TestSetGetWithExpiration(t *testing.T) {
 
 func TestUpsertBasic(t *testing.T){
   c := New()
-  c.Upsert("foo1", 10 * time.Millisecond, func(exist bool, oldValue interface{}) interface {}{
+  c.Upsert("foo1", 5 * time.Millisecond, func(exist bool, oldValue interface{}) interface {}{
     if exist {
       t.Errorf("currently not exist key")
     }
@@ -125,7 +125,7 @@ func TestUpsertBasic(t *testing.T){
     t.Errorf("expired key")
   }
 
-  c.Upsert("foo1", 10 * time.Millisecond, func(exist bool, oldValue interface{}) interface{}{
+  c.Upsert("foo1", 5 * time.Millisecond, func(exist bool, oldValue interface{}) interface{}{
     if exist {
       t.Errorf("expired key")
     }
@@ -143,7 +143,7 @@ func TestUpsertBasic(t *testing.T){
     t.Errorf("upsert value")
   }
 
-  c.Upsert("foo1", 12 * time.Millisecond, func(exist bool, oldValue interface{}) interface{} {
+  c.Upsert("foo1", 15 * time.Millisecond, func(exist bool, oldValue interface{}) interface{} {
     if exist != true {
       t.Errorf("not expired key")
     }
@@ -167,7 +167,7 @@ func TestUpsertBasic(t *testing.T){
     t.Errorf("update expire time: previous 10ms current 12ms")
   }
 
-  time.Sleep(2 * time.Millisecond)
+  time.Sleep(15 * time.Millisecond)
 
   if _, ok := c.Get("foo1"); ok {
     t.Errorf("expired key")
@@ -308,5 +308,61 @@ func TestUpsertConcurrent(t *testing.T) {
     if (v3[0] == "hoge" && v3[1] == "hello2" && v3[2] == "world2") != true {
       t.Errorf("prepend 'hoge'")
     }
+  }
+}
+
+func TestDeleteExpired(t *testing.T) {
+  type tuple struct{
+    key   string
+    value string
+  }
+  expects := []tuple{
+    tuple{"foo1", "bar1"},
+    tuple{"foo2", "bar2"},
+    tuple{"foo3", "bar3"},
+  }
+  c := New(
+    Evicted(func(key string, value interface{}){
+      found := false
+      for _, e := range expects {
+        if e.key == key {
+          found = true
+
+          if value.(string) != e.value {
+            t.Errorf("expect value: %s actual: %s", e.value, value.(string))
+          }
+        }
+      }
+      if found != true {
+        t.Errorf("expect key not found: %s", key)
+      }
+    }),
+  )
+  c.Set("foo1", "bar1", 5 * time.Millisecond)
+  c.Set("foo2", "bar2", 6 * time.Millisecond)
+  c.Set("foo3", "bar3", 7 * time.Millisecond)
+  c.Set("foo4", "bar4", 20 * time.Millisecond)
+  time.Sleep(10 * time.Millisecond)
+
+  if _, ok := c.Get("foo1"); ok {
+    t.Errorf("expire key (soft delete)")
+  }
+  if _, ok := c.Get("foo2"); ok {
+    t.Errorf("expire key (soft delete)")
+  }
+  if _, ok := c.Get("foo3"); ok {
+    t.Errorf("expire key (soft delete)")
+  }
+
+  c.DeleteExpired()
+
+  if _, ok := c.Get("foo1"); ok {
+    t.Errorf("expire key (hard delete)")
+  }
+  if _, ok := c.Get("foo2"); ok {
+    t.Errorf("expire key (hard delete)")
+  }
+  if _, ok := c.Get("foo3"); ok {
+    t.Errorf("expire key (hard delete)")
   }
 }
