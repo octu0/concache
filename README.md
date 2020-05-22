@@ -1,9 +1,15 @@
 # `concache`
 
+[![MIT License](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/octu0/concache/blob/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/octu0/cocache?status.svg)](https://godoc.org/github.com/octu0/concache)
+[![Go Report Card](https://goreportcard.com/badge/github.com/octu0/concache)](https://goreportcard.com/report/github.com/octu0/concache)
 
 `concache` is in-memory key:value cache. `concache` provides thread-safe `map[string]interface{}` with expiration times.
 `concache` a high-performance solution to this by sharding the map with minimal time spent waiting for locks.
+
+## Documentation
+
+https://pkg.go.dev/github.com/octu0/concache
 
 ## Installation
 
