@@ -9,7 +9,7 @@
 
 ## Documentation
 
-https://pkg.go.dev/github.com/octu0/concache
+https://godoc.org/github.com/octu0/concache
 
 ## Installation
 
