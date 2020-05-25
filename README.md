@@ -1,6 +1,6 @@
 # `concache`
 
-[![MIT License](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/octu0/concache/blob/master/LICENSE)
+[![MIT License](https://img.shields.io/github/license/octu0/concache)](https://github.com/octu0/concache/blob/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/octu0/cocache?status.svg)](https://godoc.org/github.com/octu0/concache)
 [![Go Report Card](https://goreportcard.com/badge/github.com/octu0/concache)](https://goreportcard.com/report/github.com/octu0/concache)
 [![Releases](https://img.shields.io/github/v/release/octu0/concache)](https://github.com/octu0/concache/releases)
@@ -77,3 +77,7 @@ Manual Expiration call
 ```
 DeleteExpired()
 ```
+
+## License
+
+MIT, see LICENSE file for details.
