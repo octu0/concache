@@ -11,7 +11,7 @@ func TestJanitorRun(t *testing.T) {
 			if (key == "foo1" || key == "foo2") != true {
 				t.Errorf("unexpected key %s", key)
 			}
-			println("janitor collect " + key)
+			t.Logf("janitor collect :%s", key)
 		}),
 		WithCleanupInterval(5*time.Millisecond),
 	)
