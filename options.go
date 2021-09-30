@@ -4,46 +4,68 @@ import (
 	"time"
 )
 
-type EvictedCb func(string, interface{})
-type DeletedCb func(string, interface{})
+type cacheOptFunc func(opt *cacheOpt)
 
-type OptionsFunc func(opts *Options)
-
-type Options struct {
-	ShardSize         uint
-	DefaultExpiration time.Duration
-	CleanupInterval   time.Duration
-	OnEvicted         EvictedCb
-	OnDeleted         DeletedCb
+type cacheOpt struct {
+	slabSize          int
+	cacheCapacity     int
+	defaultExpiration time.Duration
+	cleanupInterval   time.Duration
+	onEvicted         EvictedCb
+	onDeleted         DeletedCb
 }
 
-func DefaultShardSize() OptionsFunc {
-	return func(opts *Options) {
-		opts.ShardSize = DEFAULT_SHARD_COUNT
+func newCacheOpt() *cacheOpt {
+	return &cacheOpt{
+		slabSize:      defaultSlabSize,
+		cacheCapacity: defaultCacheCapacity,
 	}
 }
-func ShardSize(size uint) OptionsFunc {
-	return func(opts *Options) {
-		opts.ShardSize = size
+
+func WithDefaultSlabSize() cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.slabSize = defaultSlabSize
 	}
 }
-func DefaultExpiration(dur time.Duration) OptionsFunc {
-	return func(opts *Options) {
-		opts.DefaultExpiration = dur
+
+func WithSlabSize(size int) cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.slabSize = size
 	}
 }
-func CleanupInterval(intval time.Duration) OptionsFunc {
-	return func(opts *Options) {
-		opts.CleanupInterval = intval
+
+func WithDefaultCacheCapacity() cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.cacheCapacity = defaultCacheCapacity
 	}
 }
-func Evicted(cb EvictedCb) OptionsFunc {
-	return func(opts *Options) {
-		opts.OnEvicted = cb
+
+func WithCacheCapacity(size int) cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.cacheCapacity = size
 	}
 }
-func Deleted(cb DeletedCb) OptionsFunc {
-	return func(opts *Options) {
-		opts.OnDeleted = cb
+
+func WithDefaultExpiration(dur time.Duration) cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.defaultExpiration = dur
+	}
+}
+
+func WithCleanupInterval(intval time.Duration) cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.cleanupInterval = intval
+	}
+}
+
+func WithEvicted(cb EvictedCb) cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.onEvicted = cb
+	}
+}
+
+func WithDeleted(cb DeletedCb) cacheOptFunc {
+	return func(opt *cacheOpt) {
+		opt.onDeleted = cb
 	}
 }
