@@ -18,9 +18,7 @@ https://godoc.org/github.com/octu0/concache
 $ go get github.com/octu0/concache
 ```
 
-## Usage
-
-Import the package
+## Example
 
 ```go
 import(
@@ -30,9 +28,8 @@ import(
 
 func main(){
   cache := concache.New(
-    concache.DefaultShardSize(),
-    concache.DefaultExpiration(5 * time.Second),
-    concache.CleanupInterval(10 * time.Minute),
+    concache.WithDefaultExpiration(5 * time.Second),
+    concache.WithCleanupInterval(10 * time.Minute),
   )
 
   cache.Set("hello", "123", 1 * time.Second)
@@ -53,29 +50,6 @@ func main(){
     println("world not expired")
   }
 }
-```
-
-### Functions
-
-```
-Set(key string, value interface{}, dur time.Duration)
-SetDefault(key string, value interface{})
-SetNoExpire(key string, value interface{})
-Get(key string) (value interface{}, exist bool)
-Delete(key string) (value interface{}, exist bool)
-```
-
-Upsert call
-
-```
-type UpsertCallback func(exist bool, oldValue interface{}) (newValue interface{})
-Upsert(key string, dur time.Duration, cb UpsertCallback)
-```
-
-Manual Expiration call
-
-```
-DeleteExpired()
 ```
 
 ## License
