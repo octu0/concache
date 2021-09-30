@@ -1,8 +1,20 @@
 package concache
 
 import (
-	"runtime"
 	"time"
+
+	"github.com/octu0/cmap"
+)
+
+const (
+	defaultSlabSize      int = 1024
+	defaultCacheCapacity int = 128
+)
+
+type (
+	EvictedCb func(string, interface{})
+	DeletedCb func(string, interface{})
+	UpsertCb  func(exist bool, oldValue interface{}) (newValue interface{})
 )
 
 type CacheGetSetDelete interface {
@@ -13,15 +25,15 @@ type CacheGetSetDelete interface {
 	Delete(key string) (value interface{}, exist bool)
 }
 
-type UpsertCb func(exist bool, oldValue interface{}) (newValue interface{})
-
 type CacheGetSetUpsertDelete interface {
 	CacheGetSetDelete
 	Upsert(key string, dur time.Duration, cb UpsertCb)
 }
+
 type CacheItemCount interface {
 	Count() int
 }
+
 type CacheItemDeleteExpire interface {
 	DeleteExpired()
 }
@@ -35,166 +47,165 @@ var (
 )
 
 type Cache struct {
-	shard             *MapShard
-	janitor           *Janitor
-	defaultExpiration time.Duration
-	cleanupInterval   time.Duration
-	evictedCb         EvictedCb
-	deletedCb         DeletedCb
+	opt     *cacheOpt
+	cache   *cmap.CMap
+	janitor *janitor
 }
 
-func New(funcs ...OptionsFunc) *Cache {
-	opts := new(Options)
+func New(funcs ...cacheOptFunc) *Cache {
+	opt := newCacheOpt()
 	for _, fn := range funcs {
-		fn(opts)
-	}
-	if opts.ShardSize < 1 {
-		opts.ShardSize = DEFAULT_SHARD_COUNT
+		fn(opt)
 	}
 
-	c := new(Cache)
-	c.shard = newMapShard(opts.ShardSize)
-	c.defaultExpiration = opts.DefaultExpiration
-	c.cleanupInterval = opts.CleanupInterval
-	c.evictedCb = opts.OnEvicted
-	c.deletedCb = opts.OnDeleted
-
-	if 0 < c.cleanupInterval {
-		janitor := newJanitor(c.cleanupInterval)
-		c.janitor = janitor
-		janitor.Run(c)
-		runtime.SetFinalizer(c, stopJanitor)
+	c := &Cache{
+		opt:     opt,
+		cache:   cmap.New(cmap.WithSlabSize(opt.slabSize), cmap.WithCacheCapacity(opt.cacheCapacity)),
+		janitor: newJanitor(opt.cleanupInterval),
 	}
+	c.initJanitor()
 	return c
 }
-func stopJanitor(c *Cache) {
-	c.janitor.Stop()
+
+func (c *Cache) initJanitor() {
+	if 0 < c.opt.cleanupInterval {
+		c.janitor.runBackground(c.DeleteExpired)
+		c.janitor.setFinalizer()
+	}
 }
 
 func (c *Cache) Set(key string, value interface{}, dur time.Duration) {
-	ttl := createTTL(dur)
-	shard := c.shard.GetShard(key)
-	shard.Lock()
-	shard.items[key] = CacheItem{Value: value, Expiration: ttl}
-	shard.Unlock()
+	ttl := ttlNano(dur)
+	c.cache.Set(key, newCacheItem(value, ttl))
 }
+
 func (c *Cache) SetDefault(key string, value interface{}) {
-	c.Set(key, value, c.defaultExpiration)
+	c.Set(key, value, c.opt.defaultExpiration)
 }
+
 func (c *Cache) SetNoExpire(key string, value interface{}) {
 	c.Set(key, value, 0)
 }
 
 func (c *Cache) Upsert(key string, dur time.Duration, cb UpsertCb) {
-	var newValue interface{}
-	ttl := createTTL(dur)
-	shard := c.shard.GetShard(key)
-	shard.Lock()
-	item, ok := shard.items[key]
-	if ok {
-		if item.Expired() {
-			newValue = cb(false, nil)
-		} else {
-			newValue = cb(true, item.Value)
+	ttl := ttlNano(dur)
+	c.cache.Upsert(key, func(exists bool, oldValue interface{}) interface{} {
+		if exists != true {
+			return newCacheItem(cb(false, nil), ttl)
 		}
-	} else {
-		newValue = cb(false, nil)
-	}
-	shard.items[key] = CacheItem{Value: newValue, Expiration: ttl}
-	shard.Unlock()
+
+		item := oldValue.(*cacheItem)
+		if item.isExpired() {
+			return newCacheItem(cb(false, nil), ttl)
+		}
+		return newCacheItem(cb(true, item.value), ttl)
+	})
 }
+
 func (c *Cache) UpsertDefault(key string, cb UpsertCb) {
-	c.Upsert(key, c.defaultExpiration, cb)
+	c.Upsert(key, c.opt.defaultExpiration, cb)
 }
+
 func (c *Cache) UpsertNoExpire(key string, cb UpsertCb) {
 	c.Upsert(key, 0, cb)
 }
 
 func (c *Cache) Get(key string) (interface{}, bool) {
-	shard := c.shard.GetShard(key)
-	shard.RLock()
-	item, ok := shard.items[key]
+	v, ok := c.cache.Get(key)
 	if ok != true {
-		shard.RUnlock()
 		return nil, false
 	}
-	if item.Expired() {
-		shard.RUnlock()
+
+	item := v.(*cacheItem)
+	if item.isExpired() {
 		return nil, false
 	}
-	shard.RUnlock()
-	return item.Value, true
+	return item.value, true
 }
 
 func (c *Cache) Delete(key string) (interface{}, bool) {
-	shard := c.shard.GetShard(key)
-	shard.Lock()
-	item, ok := shard.items[key]
+	v, ok := c.cache.Remove(key)
 	if ok != true {
-		shard.Unlock()
 		return nil, false
 	}
-	delete(shard.items, key)
-	c.onDeleted(key, item.Value)
-	shard.Unlock()
-	return item.Value, true
+
+	item := v.(*cacheItem)
+	if c.opt.onDeleted != nil {
+		c.opt.onDeleted(key, item.value)
+	}
+	return item.value, true
 }
 
 func (c *Cache) Count() int {
-	count := 0
-	for _, shard := range c.shard.GetShards() {
-		shard.RLock()
-		count += len(shard.items)
-		shard.RUnlock()
-	}
-	return count
+	return c.cache.Len()
 }
 
-type kv struct {
+type deleteExpiredKV struct {
 	key   string
 	value interface{}
 }
 
 func (c *Cache) DeleteExpired() {
-	var evictedItems []kv
-	now := time.Now().UnixNano()
+	evictedItems := make([]*deleteExpiredKV, 0, c.cache.Len())
+
 	collectEvicted := false
-	if c.evictedCb != nil {
+	if c.opt.onEvicted != nil {
 		collectEvicted = true
-		evictedItems = make([]kv, 0)
 	}
 
-	for _, shard := range c.shard.GetShards() {
-		shard.Lock()
-		for key, item := range shard.items {
-			if item.ExpiredFrom(now) {
-				delete(shard.items, key)
-				if collectEvicted {
-					evictedItems = append(evictedItems, kv{key, item.Value})
-				}
+	nowNano := time.Now().UnixNano()
+	keys := c.cache.Keys()
+	for _, key := range keys {
+		v, ok := c.cache.Get(key)
+		if ok != true {
+			continue
+		}
+		item := v.(*cacheItem)
+		if item.isExpiredFromNano(nowNano) {
+			c.cache.Remove(key)
+			if collectEvicted {
+				evictedItems = append(evictedItems, &deleteExpiredKV{key, item.value})
 			}
 		}
-		shard.Unlock()
 	}
-	for _, item := range evictedItems {
-		c.onExpired(item.key, item.value)
-	}
-}
-func (c *Cache) onDeleted(key string, value interface{}) {
-	if c.deletedCb != nil {
-		c.deletedCb(key, value)
-	}
-}
-func (c *Cache) onExpired(key string, value interface{}) {
-	if c.evictedCb != nil {
-		c.evictedCb(key, value)
+
+	if c.opt.onEvicted != nil {
+		for _, item := range evictedItems {
+			c.opt.onEvicted(item.key, item.value)
+		}
 	}
 }
 
-func createTTL(dur time.Duration) int64 {
-	ttl := int64(0)
-	if 0 < dur {
-		ttl = time.Now().Add(dur).UnixNano()
+type cacheItem struct {
+	value      interface{}
+	expiration int64
+}
+
+func newCacheItem(v interface{}, e int64) *cacheItem {
+	return &cacheItem{
+		value:      v,
+		expiration: e,
 	}
-	return ttl
+}
+
+func (c *cacheItem) isExpired() bool {
+	return c.isExpiredFromNano(time.Now().UnixNano())
+}
+
+func (c *cacheItem) isExpiredFromNano(fromNano int64) bool {
+	if 0 == c.expiration {
+		return false
+	}
+
+	if fromNano < c.expiration {
+		return false
+	}
+	return true
+}
+
+func ttlNano(dur time.Duration) int64 {
+	if dur < 1 {
+		return int64(0)
+	}
+	return time.Now().Add(dur).UnixNano()
 }

@@ -1,5 +1,6 @@
 package concache
 
 const (
-	Version string = "1.0.1"
+	AppName string = "concache"
+	Version string = "1.0.2"
 )

@@ -80,7 +80,7 @@ func TestSetGetWithExpiration(t *testing.T) {
 	check(c, "foo_d", "bar_d", false) // default expiration 0
 
 	c1 := New(
-		DefaultExpiration(10 * time.Millisecond),
+		WithDefaultExpiration(10 * time.Millisecond),
 	)
 	c1.SetDefault("foo2", "bar2")
 	check(c1, "foo2", "bar2", true)
@@ -92,7 +92,7 @@ func TestSetGetWithExpiration(t *testing.T) {
 	check(c1, "foo_0", "bar_0", false)
 
 	c2 := New(
-		DefaultExpiration(100 * time.Millisecond),
+		WithDefaultExpiration(100 * time.Millisecond),
 	)
 	c2.Set("foo4", "bar4", 10*time.Millisecond)
 	check(c2, "foo4", "bar4", true)
@@ -322,7 +322,7 @@ func TestDeleteExpired(t *testing.T) {
 		tuple{"foo3", "bar3"},
 	}
 	c := New(
-		Evicted(func(key string, value interface{}) {
+		WithEvicted(func(key string, value interface{}) {
 			found := false
 			for _, e := range expects {
 				if e.key == key {
